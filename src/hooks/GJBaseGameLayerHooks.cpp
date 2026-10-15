@@ -5,18 +5,13 @@
 
 using namespace geode::prelude;
 
-// processCommands is the game's per-physics-step function (called once per fixed
-// physics step, regardless of framerate). Hooking it — rather than the per-render
-// postUpdate the prototype used — is what makes frame counting and input replay
-// deterministic. We decide + apply input before the original runs the step.
-//
-// GD 2.2081 split the step into half-ticks: the signature gained isHalfTick and
-// isLastTick. We still count every invocation as a step — that sequence is
-// deterministic for identical input, which is all replay requires. (If half-tick
-// granularity ever hurts solves, gate onStep on !isHalfTick or isLastTick here.)
+// Keep this signature identical to GeometryDash.bro for GD 2.208:
+// GJBaseGameLayer::processCommands(float). Geode does not reliably warn when a
+// $modify method has the wrong signature, so a mismatch can compile but never hook.
+// Feed the solver immediately before the game's command/physics processing.
 class $modify(DBGameLayer, GJBaseGameLayer) {
-    void processCommands(float dt, bool isHalfTick, bool isLastTick) {
+    void processCommands(float dt) {
         dashback::SolverController::get().onStep(this);
-        GJBaseGameLayer::processCommands(dt, isHalfTick, isLastTick);
+        GJBaseGameLayer::processCommands(dt);
     }
 };

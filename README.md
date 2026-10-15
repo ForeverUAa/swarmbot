@@ -1,18 +1,12 @@
-# dashback
+# Swarmbot
 
-A [Geode](https://geode-sdk.org/) mod for Geometry Dash that **algorithmically solves
-levels** using a variety of interchangeable algorithms, and records per-attempt
-metrics so their runtime, death count, and success rate can be compared.
+A [Geode](https://geode-sdk.org/) mod for Geometry Dash that experiments with **evolutionary level solving** and records per-attempt metrics.
 
 <img src="logo.png" width="150" alt="the mod's logo" />
 
 ## What it does
 
-When you open a level, dashback takes over player input and repeatedly attempts
-the level using the currently-selected algorithm. Every attempt's outcome is
-appended to a CSV in the mod's save directory so you can analyze which algorithm
-performs best. The long-term goal is a process that continuously solves the Daily
-level with the winning algorithm.
+Open a level in the editor and press the **SWARM** button below the playtest controls. Swarmbot launches the level's playtest and begins an evolutionary search, testing one input sequence per attempt and changing candidates after deaths. A small HUD shows the current attempt and best progress. Results are recorded in a CSV in the mod's save directory.
 
 ## Status
 

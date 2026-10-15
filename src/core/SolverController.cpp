@@ -12,6 +12,7 @@
 #include <Geode/binding/PlayerObject.hpp>
 #include <Geode/binding/GJGameLevel.hpp>
 #include <Geode/modify/EditorUI.hpp>
+#include <Geode/modify/IDManager.hpp>
 #include <Geode/modify/CCKeyboardDispatcher.hpp>
 
 #include <algorithm>
@@ -338,52 +339,56 @@ std::string SolverController::hudText() const {
 } // namespace dashback
 
 
-// Editor-only entry point. Copy the vanilla Test button's sprite so this control
-// matches the existing editor UI without introducing a separate visual style.
+// Editor-only entry point. Use Geode's registered EditorUI IDs before looking up
+// the playtest menu, and make the action visibly distinct from the vanilla Test button.
 class $modify(DBEditorUI, EditorUI) {
     bool init(LevelEditorLayer* editorLayer) {
         if (!EditorUI::init(editorLayer)) return false;
 
+        geode::NodeIDs::provideFor(static_cast<EditorUI*>(this));
+
+        if (this->getChildByID("rhelgason.dashback/swarmbot-editor-menu")) {
+            return true;
+        }
+
         auto testMenu = this->getChildByID("playtest-menu");
-        auto testButton = typeinfo_cast<CCMenuItemSpriteExtra*>(
-            testMenu ? testMenu->getChildByID("playtest-button") : nullptr
-        );
-        if (!testMenu || !testButton) {
-            log::warn("swarmbot: couldn't find the editor Test button");
+        if (!testMenu) {
+            log::warn("swarmbot: couldn't find the editor playtest menu after requesting node IDs");
             return true;
         }
 
-        auto sourceSprite = typeinfo_cast<CCSprite*>(testButton->getNormalImage());
-        if (!sourceSprite) {
-            log::warn("swarmbot: couldn't copy the editor Test button sprite");
+        auto sprite = ButtonSprite::create("SWARM");
+        if (!sprite) {
+            log::warn("swarmbot: couldn't create the editor button sprite");
             return true;
         }
-
-        auto sprite = CCSprite::createWithTexture(
-            sourceSprite->getTexture(), sourceSprite->getTextureRect()
-        );
-        if (!sprite) return true;
-        sprite->setFlipX(sourceSprite->isFlipX());
-        sprite->setFlipY(sourceSprite->isFlipY());
 
         auto button = CCMenuItemSpriteExtra::create(
             sprite, this, menu_selector(DBEditorUI::onSwarmBot)
         );
         if (!button) return true;
-        button->setID("swarmbot-editor-button");
-        button->setScale(testButton->getScale());
+        button->setID("rhelgason.dashback/swarmbot-editor-button");
 
         auto menu = CCMenu::create();
         if (!menu) return true;
-        menu->setID("swarmbot-editor-menu");
+        menu->setID("rhelgason.dashback/swarmbot-editor-menu");
         menu->addChild(button);
         menu->setPosition(testMenu->getPositionX(), testMenu->getPositionY() - 46.f);
         this->addChild(menu, 1000);
 
+        log::info("swarmbot: added SWARM button to the editor");
         return true;
     }
 
     void onSwarmBot(CCObject* sender) {
+        log::info("swarmbot: editor solve requested");
+        if (!Mod::get()->getSettingValue<bool>("enabled")) {
+            FLAlertLayer::create(
+                "Swarmbot", "The solver is disabled in the mod settings.", "OK"
+            )->show();
+            return;
+        }
+
         dashback::requestEditorSolve();
         this->onPlaytest(sender);
     }
