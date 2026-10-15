@@ -20,6 +20,9 @@ void GeneticAlgorithm::onLevelStart(const LevelInfo& /*level*/) {
     m_fitness.assign(m_popSize, 0);
     m_best.clear();
     m_bestFit = -1;
+    m_generationBest = -1;
+    m_lastGenerationBest = -1;
+    m_stagnantGenerations = 0;
     m_current = 0;
     m_generation = 0;
 }
@@ -36,6 +39,7 @@ InputState GeneticAlgorithm::decide(const StepContext& ctx) {
 
 void GeneticAlgorithm::onDeath(const DeathInfo& info) {
     m_fitness[m_current] = info.frame;
+    m_generationBest = std::max(m_generationBest, info.frame);
     if (info.frame > m_bestFit) {
         m_bestFit = info.frame;
         m_best = m_pop[m_current];
@@ -54,6 +58,13 @@ const seq::Genome& GeneticAlgorithm::tournament() {
 }
 
 void GeneticAlgorithm::evolve() {
+    if (m_generationBest > m_lastGenerationBest) {
+        m_stagnantGenerations = 0;
+        m_lastGenerationBest = m_generationBest;
+    } else {
+        ++m_stagnantGenerations;
+    }
+
     std::vector<int> order(m_popSize);
     std::iota(order.begin(), order.end(), 0);
     std::sort(order.begin(), order.end(),
@@ -61,22 +72,42 @@ void GeneticAlgorithm::evolve() {
 
     std::vector<seq::Genome> next;
     next.reserve(m_popSize);
-    for (int e = 0; e < m_eliteCount; ++e) next.push_back(m_pop[order[e]]);
+
+    // Elitism guarantees that the best candidates survive unchanged.
+    for (int e = 0; e < m_eliteCount; ++e) {
+        next.push_back(m_pop[order[e]]);
+    }
+
+    const bool injectRandomCandidates = m_stagnantGenerations >= 4;
+    const double mutationRate = std::min(
+        1.0, m_mutationRate * (1.0 + static_cast<double>(m_stagnantGenerations) / 3.0));
 
     while (static_cast<int>(next.size()) < m_popSize) {
+        const auto childIndex = static_cast<int>(next.size());
+
+        // If the population is stuck, reserve some slots for fresh candidates.
+        // Empty genomes generate new random inputs as they advance through a run.
+        if (injectRandomCandidates && childIndex % 4 == 0) {
+            next.emplace_back();
+            continue;
+        }
+
         seq::Genome child = seq::crossover(tournament(), tournament(), m_rng);
-        // Death-focused mutation at the current frontier (where the population
-        // is collectively stuck).
-        seq::mutateAround(child, m_bestFit, m_mutationWindow, m_mutationRate, m_holdProb, m_rng);
+        seq::mutateAround(
+            child, m_bestFit, m_mutationWindow, mutationRate, m_holdProb, m_rng);
         next.push_back(std::move(child));
     }
 
     m_pop = std::move(next);
     m_fitness.assign(m_popSize, 0);
     m_current = 0;
+    m_generationBest = -1;
     ++m_generation;
-    geode::log::info("dashback[genetic]: generation {} done, frontier frame {}",
-        m_generation, m_bestFit);
+
+    geode::log::info(
+        "dashback[genetic]: generation {} done, frontier frame {}, stagnant generations {}{}",
+        m_generation, m_bestFit, m_stagnantGenerations,
+        injectRandomCandidates ? " (random candidates injected)" : "");
 }
 
 } // namespace dashback
