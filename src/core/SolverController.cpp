@@ -13,7 +13,6 @@
 #include <Geode/binding/GJGameLevel.hpp>
 #include <Geode/modify/EditorUI.hpp>
 #include <Geode/modify/CCKeyboardDispatcher.hpp>
-#include <Geode/modify/CCKeyboardDispatcher.hpp>
 
 #include <algorithm>
 #include <chrono>
@@ -399,18 +398,20 @@ class $modify(DBSwarmKeyboard, CCKeyboardDispatcher) {
             auto* layer = s_swarmPlayLayer;
             auto camera = layer->m_gameState.m_cameraPosition;
             constexpr float pan = 60.f;
+            const bool platformer = layer->m_level && layer->m_level->isPlatformer();
+
+            // Platformer levels use left/right/up. Classic levels use up only.
             switch (key) {
                 case KEY_Left:
+                    if (!platformer) break;
                     layer->cameraMoveX(camera.x - pan, 0.f, 1.f, false);
                     return true;
                 case KEY_Right:
+                    if (!platformer) break;
                     layer->cameraMoveX(camera.x + pan, 0.f, 1.f, false);
                     return true;
                 case KEY_Up:
                     layer->cameraMoveY(camera.y + pan, 0.f, 1.f, true);
-                    return true;
-                case KEY_Down:
-                    layer->cameraMoveY(camera.y - pan, 0.f, 1.f, true);
                     return true;
                 default:
                     break;
