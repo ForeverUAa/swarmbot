@@ -42,7 +42,6 @@ jobs:
           tag_name: latest
           name: Latest build
           prerelease: true
-          make_latest: true
           overwrite_files: true
           files: ${{ steps.build.outputs.build-output }}/*.geode
           body: Latest successful Windows build from the main branch.
