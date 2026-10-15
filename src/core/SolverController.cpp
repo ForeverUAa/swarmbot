@@ -394,8 +394,8 @@ class $modify(DBEditorUI, EditorUI) {
 // the view independently so the user can inspect the level while candidates run.
 class $modify(DBSwarmKeyboard, CCKeyboardDispatcher) {
     bool dispatchKeyboardMSG(enumKeyCodes key, bool down, bool repeat, double delta) {
-        if (down && !repeat && s_swarmModeActive && s_swarmPlayLayer) {
-            auto* layer = s_swarmPlayLayer;
+        if (down && !repeat && dashback::s_swarmModeActive && dashback::s_swarmPlayLayer) {
+            auto* layer = dashback::s_swarmPlayLayer;
             auto camera = layer->m_gameState.m_cameraPosition;
             constexpr float pan = 60.f;
             const bool platformer = layer->m_level && layer->m_level->isPlatformer();
