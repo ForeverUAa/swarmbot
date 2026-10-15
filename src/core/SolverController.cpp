@@ -373,7 +373,9 @@ class $modify(DBEditorUI, EditorUI) {
         if (!menu) return true;
         menu->setID("rhelgason.dashback/swarmbot-editor-menu");
         menu->addChild(button);
-        menu->setPosition(testMenu->getPositionX(), testMenu->getPositionY() - 46.f);
+        // Keep the extra button inside the visible bottom toolbar; placing it 46px below
+        // the playtest menu can put its center below the screen edge in GD 2.2081.
+        menu->setPosition(testMenu->getPositionX(), std::max(24.f, testMenu->getPositionY() - 24.f));
         this->addChild(menu, 1000);
 
         log::info("swarmbot: added SWARM button to the editor");
