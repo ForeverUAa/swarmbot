@@ -13,8 +13,8 @@ namespace dashback {
 // it evolves — elitism + tournament selection + single-point crossover +
 // death-focused mutation at the frontier — and the next generation is played.
 // The per-frame hold genome is mode-agnostic, so a genome naturally encodes ship
-// thrust, wave, taps, etc. This is the strongest general solver and the natural
-// contrast to backtracking (it recombines partial solutions across sections).
+// thrust, wave, taps, etc. Candidates are evaluated sequentially by the real game,
+// not as simultaneous PlayerObjects.
 class GeneticAlgorithm : public Algorithm {
 public:
     std::string name() const override { return "genetic"; }
@@ -32,9 +32,12 @@ private:
 
     std::mt19937 m_rng{1337};
     std::vector<seq::Genome> m_pop;
-    std::vector<int> m_fitness;   // frame reached, per genome
+    std::vector<int> m_fitness;   // physics frame reached, per genome
     seq::Genome m_best;           // best genome across all generations
     int m_bestFit = -1;
+    int m_generationBest = -1;
+    int m_lastGenerationBest = -1;
+    int m_stagnantGenerations = 0;
 
     int m_current = 0;            // genome being evaluated this attempt
     int m_generation = 0;
