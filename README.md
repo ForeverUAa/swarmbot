@@ -1,126 +1,97 @@
 # Swarmbot
 
-A [Geode](https://geode-sdk.org/) mod for Geometry Dash that experiments with **evolutionary level solving** and records per-attempt metrics.
+Swarmbot is an experimental [Geode](https://geode-sdk.org/) mod for Geometry Dash. It tries to find a winning input sequence by running attempts, measuring how far each attempt gets, and evolving better candidates with a genetic algorithm.
 
-<img src="logo.png" width="150" alt="the mod's logo" />
+> **Status:** experimental. A successful build only confirms that the mod compiles. The solver is still being tested in-game and is not guaranteed to solve levels.
 
-## What it does
+<img src="logo.png" width="150" alt="Swarmbot logo" />
 
-Open a level in the editor and press the **SWARM** button below the playtest controls. Swarmbot launches the level's playtest and begins an evolutionary search, testing one input sequence per attempt and changing candidates after deaths. A small HUD shows the current attempt and best progress. Results are recorded in a CSV in the mod's save directory.
+## Download
 
-## Status
+Get the latest Windows build from the [Latest build release](https://github.com/ForeverUAa/swarmbot/releases/tag/latest). Download the `.geode` file and install it with Geode.
 
-- ✅ Deterministic input/replay foundation (see below)
-- ✅ Pluggable algorithm framework + metrics logging
-- ✅ Three built-in algorithms: `backtracking`, `random`, `genetic`
-- 🚧 Daily-level auto-runner (scaffolded; navigation TODO — see `src/daily/`)
+The automated release currently builds **Windows x64**. The project metadata lists Geometry Dash 2.2081 and Geode SDK 5.8.2 as its target versions.
+
+## Use it
+
+1. Open a level in the **level editor**.
+2. Click **SWARM**, below the editor's playtest controls.
+3. Let the playtest run. The HUD shows the algorithm, game mode, attempt number, current progress, and best progress.
+4. When a candidate dies, the solver records its result and starts another attempt. After a population has been tested, the genetic algorithm evolves the next generation.
+
+The solver runs candidates **sequentially** through Geometry Dash's actual player. It does not create a visible crowd of independent players.
+
+To stop the search, leave the level. The game speed is reset when the level closes.
 
 ## How it works
 
-### Determinism (the important part)
+- **Input:** the solver chooses whether to hold the jump input on each physics step. This is a basic input model, not a complete controller for every mechanic.
+- **Attempt scoring:** the current implementation primarily scores a candidate by how many physics steps it survives. The HUD also tracks current and best horizontal progress.
+- **Evolution:** the genetic algorithm keeps top candidates, selects parents with tournament selection, crosses their input sequences over, and mutates inputs near the best known death point. After several stagnant generations, it injects fresh candidates.
+- **Physics hook:** the mod hooks `GJBaseGameLayer::processCommands` using the Geometry Dash 2.2081 bindings to drive the solver alongside game command processing.
+- **Reset and completion hooks:** player deaths trigger candidate scoring and resets. Completing the level stops the search and records a successful attempt.
+- **Metrics:** each attempt is appended to `metrics.csv` in the mod's save directory.
 
-The original prototype counted frames in `PlayLayer::postUpdate`, which runs once
-per *rendered* frame. Geometry Dash steps its physics at a fixed 240 steps/second
-and runs a variable number of those steps per rendered frame, so a per-render
-frame index drifts between attempts and replays desync.
-
-dashback instead hooks **`GJBaseGameLayer::processCommands`**, the function the
-game calls once per fixed physics step. Counting those calls yields a frame index
-that is identical across attempts regardless of framerate. Input is applied via
-the game's own **`handleButton`** entry point, so it enters exactly as a real
-press would. This is the fix for the flakiness that plagued the prototype.
-
-### Architecture
-
-```
-src/
-  core/
-    Types.hpp            StepContext (incl. GameMode) / DeathInfo / AttemptResult / InputState
-    Algorithm.hpp        the interface every solver implements
-    AlgorithmRegistry.*  name -> factory, so algorithms are selected by string
-    SolverController.*    orchestrator; owns the algorithm + metrics, driven by hooks
-    MetricsRecorder.*     appends one CSV row per attempt
-    SolutionStore.*      saves/loads completed input sequences for E2E replay
-    Perception.*         on-demand obstacle sensing (damaging/static objects ahead)
-  hooks/
-    GJBaseGameLayerHooks.cpp  processCommands  -> deterministic step + input
-    PlayLayerHooks.cpp        init/destroyPlayer/resetLevel/levelComplete/onExit + HUD
-    MenuLayerHooks.cpp        entry point for the daily runner
-    KeybindHooks.cpp          [ / ] live speed control
-  algorithms/
-    SequenceSearch.hpp        shared hold-sequence helpers (mutate/crossover)
-    BacktrackingAlgorithm.*   DFS backtracking over variable-length hold intervals
-    GeneticAlgorithm.*        evolutionary solver (tournament + crossover + mutation)
-    HillClimbingAlgorithm.*   (1+1) local search; annealing = same class, temp > 0
-    RandomSearchAlgorithm.*   pure-random baseline
-    ReplayAlgorithm.hpp       plays back a stored solution end-to-end
-    Builtins.cpp              registers the built-ins
-  daily/
-    DailyRunner.*             daily auto-solve scaffold
-```
-
-Algorithms (Algorithm setting): `backtracking`, `genetic`, `hillclimb`, `annealing`, `random`.
-All share one mode-agnostic representation — a per-frame hold bit — which is
-correct for every game mode (cube/ship/ball/UFO/wave/robot/spider/swing); the
-mode is only used for awareness. Perception is a foundation for future
-reactive/RL algorithms and is not consumed by the search algorithms above.
-
-The controller lifecycle, driven entirely by game hooks:
-
-```
-PlayLayer::init          -> onLevelStart   pick algorithm, start attempt 1
-GJBaseGameLayer::         -> onStep         deterministic frame + input, every physics step
-  processCommands
-PlayLayer::destroyPlayer -> onDeath         record attempt, let algorithm learn, reset
-PlayLayer::resetLevel    -> onAttemptStart  begin next attempt
-PlayLayer::levelComplete -> onComplete      record success, stop
-PlayLayer::onExit        -> onLevelEnd      tear down
-```
-
-### Adding a new algorithm
-
-1. Subclass `dashback::Algorithm` (see `algorithms/BacktrackingAlgorithm.*` for the
-   simplest example). Implement `name()` and `decide(ctx)`; optionally
-   `onAttemptStart` / `onDeath` / `onComplete` to learn between attempts.
-2. Register it in `algorithms/Builtins.cpp`:
-   ```cpp
-   registry.reg("my-algo", [] { return std::make_unique<MyAlgorithm>(); });
-   ```
-3. Select it via the **Algorithm** setting (value = the id you registered).
-
-Nothing else changes — the controller, metrics, and HUD work with any algorithm.
-
-## Metrics
-
-Each attempt appends a row to `<mod save dir>/metrics.csv`:
-
-```
-session_id,algorithm,level_id,level_name,attempt,success,best_progress,death_frame,frames,wall_ms
-```
-
-Load it into a spreadsheet or pandas and group by `algorithm` to compare
-success rate, attempts-to-solve, and wall-clock time.
+This approach is a work in progress. Survival time is only a rough fitness signal, and a longer attempt does not always mean a better input sequence. Levels requiring precise mode-specific control, timing beyond a single hold input, or mechanics not represented by the solver may not be solvable yet.
 
 ## Settings
 
-| Setting | Default | Meaning |
-|---|---|---|
-| Enable Solver | on | Master switch |
-| Algorithm | `backtracking` | `backtracking` \| `random` \| `genetic` |
-| Max Attempts | 0 | Give up after N attempts (0 = unlimited) |
-| Auto-solve Daily | off | Experimental daily auto-runner |
+The mod exposes these settings in Geode:
 
-## Build instructions
+| Setting | What it controls |
+|---|---|
+| **Enable Solver** | Master switch for the solver. |
+| **Algorithm** | The general algorithm setting used by the framework. The editor's **SWARM** button currently selects the genetic algorithm directly. |
+| **Max Attempts** | Attempt limit for the general controller. The editor swarm currently runs without an attempt cap. |
+| **Solve Speed** | Game speed multiplier while solving. The default is 6x, with a range of 1x to 20x. |
+| **Search Granularity** | Step size for the backtracking algorithm. |
+| **Max Hold Length** | Maximum hold interval considered by backtracking. |
+| **Population Size** | Number of candidates in each genetic generation. |
+| **Mutation Rate** | Probability of flipping an input during mutation. |
+| **Mutation Window** | Range around the best known death point where mutations focus. |
+| **Annealing Temperature** | Initial temperature for the annealing algorithm. |
+| **Show Obstacle Sensing** | Adds debug sensing information to the HUD. It does not currently guide the genetic search. |
+| **Auto-solve Daily** | Experimental scaffold only. Automatic Daily navigation is not implemented. |
 
-Requires the [Geode SDK](https://docs.geode-sdk.org/getting-started/) and CLI.
+The `[` and `]` keys adjust solving speed while a level is active.
+
+## Metrics
+
+The solver appends attempt results to `metrics.csv` in the mod's save directory. The CSV contains fields such as session ID, algorithm, level ID and name, attempt number, success, best progress, death frame, frame count, and elapsed time.
+
+You can open the CSV in a spreadsheet or use Python/pandas to compare attempts. Keep in mind that the current fitness function is based mainly on survival frames, not a full understanding of level geometry.
+
+## Build from source
+
+You need the [Geode SDK](https://docs.geode-sdk.org/getting-started/), the Geode CLI, and a configured C++ build environment.
+
+With `GEODE_SDK` pointing to your SDK installation:
 
 ```sh
-# with GEODE_SDK pointing at your SDK clone
 geode build
 ```
 
-# Resources
-* [Geode SDK Documentation](https://docs.geode-sdk.org/)
-* [Geode SDK Source Code](https://github.com/geode-sdk/geode/)
-* [Geode CLI](https://github.com/geode-sdk/cli)
-* [Bindings](https://github.com/geode-sdk/bindings/)
+The GitHub Actions workflow builds the Windows mod on pushes to `main`, uploads the `.geode` file as an artifact, and updates the [Latest build release](https://github.com/ForeverUAa/swarmbot/releases/tag/latest). Pushing a version tag such as `v1.0.1` creates a versioned release.
+
+## Project layout
+
+```text
+src/
+  core/        Solver controller, algorithm registry, input types, metrics,
+               saved solutions, and obstacle sensing
+  hooks/       Geometry Dash gameplay hooks, editor button, HUD, and keybinds
+  algorithms/  Genetic, backtracking, hill-climbing, annealing, random, and replay
+  daily/       Experimental Daily-level runner scaffold
+```
+
+The framework contains several algorithms, but the editor's **SWARM** action currently starts the genetic algorithm specifically.
+
+## Links
+
+- [Geode website](https://geode-sdk.org/)
+- [Geode documentation](https://docs.geode-sdk.org/)
+- [Geode SDK source](https://github.com/geode-sdk/geode)
+- [Geode CLI](https://github.com/geode-sdk/cli)
+- [Geometry Dash bindings](https://github.com/geode-sdk/bindings)
+- [Actions and build logs](https://github.com/ForeverUAa/swarmbot/actions)
+- [Latest build](https://github.com/ForeverUAa/swarmbot/releases/tag/latest)
