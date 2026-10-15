@@ -123,19 +123,13 @@ void SolverController::onLevelStart(PlayLayer* pl) {
     m_lastHazardDist = -1.f;
     m_lastMode = GameMode::Cube;
 
-    if (!s_swarmModeActive) if (auto saved = SolutionStore::load(m_algoId, m_level.levelID)) {
-        m_mode = Mode::Replay;
-        m_algo = std::make_unique<ReplayAlgorithm>(std::move(*saved));
-        m_speed = 1.f; // watchable
-        log::info("dashback: replaying saved solution for '{}' (id {})",
-            m_level.name, m_level.levelID);
-    } else {
-        m_mode = Mode::Search;
-        m_algo = AlgorithmRegistry::get().create(m_algoId);
-        m_speed = static_cast<float>(Mod::get()->getSettingValue<double>("solve-speed"));
-        log::info("dashback: solving '{}' (id {}) with '{}' at {}x",
-            m_level.name, m_level.levelID, m_algoId, m_speed);
-    }
+    // The dedicated editor button always starts a fresh search. Never replay a
+    // previously saved single sequence in swarm mode.
+    m_mode = Mode::Search;
+    m_algo = AlgorithmRegistry::get().create(m_algoId);
+    m_speed = static_cast<float>(Mod::get()->getSettingValue<double>("solve-speed"));
+    log::info("dashback: starting genetic swarm for '{}' (id {}) at {}x",
+        m_level.name, m_level.levelID, m_speed);
     if (!m_algo) {
         log::error("dashback: failed to create algorithm '{}'", m_algoId);
         return;
