@@ -12,6 +12,8 @@
 #include <Geode/binding/PlayerObject.hpp>
 #include <Geode/binding/GJGameLevel.hpp>
 #include <Geode/modify/EditorUI.hpp>
+#include <Geode/modify/CCKeyboardDispatcher.hpp>
+#include <Geode/modify/CCKeyboardDispatcher.hpp>
 
 #include <algorithm>
 #include <chrono>
@@ -22,6 +24,8 @@ namespace dashback {
 
 namespace {
     bool s_editorSolveRequested = false;
+    bool s_swarmModeActive = false;
+    PlayLayer* s_swarmPlayLayer = nullptr;
 }
 
 void requestEditorSolve() {
@@ -96,9 +100,16 @@ void SolverController::onLevelStart(PlayLayer* pl) {
         return;
     }
 
+    // The editor button always starts an evolutionary swarm. Each real-game
+    // attempt evaluates one candidate; after the full population dies, the GA
+    // evolves a new generation and the controller resets for its next candidate.
+    s_swarmModeActive = true;
+    s_swarmPlayLayer = pl;
+    pl->m_gameState.m_isFreeMode = true;
+
     registerBuiltinAlgorithms();
 
-    m_algoId = Mod::get()->getSettingValue<std::string>("algorithm");
+    m_algoId = "genetic";
     if (!AlgorithmRegistry::get().has(m_algoId)) {
         log::warn("dashback: unknown algorithm '{}', using 'backtracking'", m_algoId);
         m_algoId = "backtracking";
@@ -107,12 +118,12 @@ void SolverController::onLevelStart(PlayLayer* pl) {
     m_level.levelID = pl->m_level->m_levelID;
     m_level.name = std::string(pl->m_level->m_levelName);
     m_level.length = pl->m_levelLength;
-    m_maxAttempts = static_cast<int>(Mod::get()->getSettingValue<int64_t>("max-attempts"));
+    m_maxAttempts = 0; // keep evolving generations until solved or manually stopped
     m_showSensing = Mod::get()->getSettingValue<bool>("show-sensing");
     m_lastHazardDist = -1.f;
     m_lastMode = GameMode::Cube;
 
-    if (auto saved = SolutionStore::load(m_algoId, m_level.levelID)) {
+    if (!s_swarmModeActive) if (auto saved = SolutionStore::load(m_algoId, m_level.levelID)) {
         m_mode = Mode::Replay;
         m_algo = std::make_unique<ReplayAlgorithm>(std::move(*saved));
         m_speed = 1.f; // watchable
@@ -167,12 +178,18 @@ void SolverController::beginAttempt() {
 void SolverController::onAttemptStart() {
     if (!m_active || !m_algo) return;
     if (m_awaitingFirstStep) return; // debounce duplicate resetLevel() calls
+    if (s_swarmModeActive && m_playLayer) {
+        m_playLayer->m_gameState.m_isFreeMode = true;
+    }
     beginAttempt();
 }
 
 void SolverController::onStep(GJBaseGameLayer* gl) {
     if (!m_active || !m_algo || !m_playLayer) return;
     if (gl != static_cast<GJBaseGameLayer*>(m_playLayer)) return;
+    if (s_swarmModeActive) {
+        m_playLayer->m_gameState.m_isFreeMode = true;
+    }
 
     auto player = gl->m_player1;
     if (!player || player->m_isDead) return;
@@ -290,6 +307,9 @@ void SolverController::onComplete(PlayLayer* pl) {
 }
 
 void SolverController::onLevelEnd() {
+    s_swarmModeActive = false;
+    s_swarmPlayLayer = nullptr;
+    s_editorSolveRequested = false;
     if (m_active) {
         log::info("dashback: level closed after {} attempts", m_attempt);
     }
@@ -373,5 +393,35 @@ class $modify(DBEditorUI, EditorUI) {
     void onSwarmBot(CCObject* sender) {
         dashback::requestEditorSolve();
         this->onPlaytest(sender);
+    }
+};
+
+
+// During swarm runs, the camera is detached from player-follow. Arrow keys pan
+// the view independently so the user can inspect the level while candidates run.
+class $modify(DBSwarmKeyboard, CCKeyboardDispatcher) {
+    bool dispatchKeyboardMSG(enumKeyCodes key, bool down, bool repeat, double delta) {
+        if (down && !repeat && s_swarmModeActive && s_swarmPlayLayer) {
+            auto* layer = s_swarmPlayLayer;
+            auto camera = layer->m_gameState.m_cameraPosition;
+            constexpr float pan = 60.f;
+            switch (key) {
+                case KEY_Left:
+                    layer->cameraMoveX(camera.x - pan, 0.f, 1.f, false);
+                    return true;
+                case KEY_Right:
+                    layer->cameraMoveX(camera.x + pan, 0.f, 1.f, false);
+                    return true;
+                case KEY_Up:
+                    layer->cameraMoveY(camera.y + pan, 0.f, 1.f, true);
+                    return true;
+                case KEY_Down:
+                    layer->cameraMoveY(camera.y - pan, 0.f, 1.f, true);
+                    return true;
+                default:
+                    break;
+            }
+        }
+        return CCKeyboardDispatcher::dispatchKeyboardMSG(key, down, repeat, delta);
     }
 };
