@@ -5,13 +5,12 @@
 
 using namespace geode::prelude;
 
-// Keep this signature identical to GeometryDash.bro for GD 2.208:
-// GJBaseGameLayer::processCommands(float). Geode does not reliably warn when a
-// $modify method has the wrong signature, so a mismatch can compile but never hook.
-// Feed the solver immediately before the game's command/physics processing.
+// Match the 2.2081 bindings selected by mod.json. This target's binding includes
+// both tick flags; do not copy the one-argument signature from the 2.208 binding.
+// Feed the solver before the game's command/physics processing.
 class $modify(DBGameLayer, GJBaseGameLayer) {
-    void processCommands(float dt) {
+    void processCommands(float dt, bool isHalfTick, bool isLastTick) {
         dashback::SolverController::get().onStep(this);
-        GJBaseGameLayer::processCommands(dt);
+        GJBaseGameLayer::processCommands(dt, isHalfTick, isLastTick);
     }
 };

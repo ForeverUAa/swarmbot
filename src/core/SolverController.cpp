@@ -380,7 +380,7 @@ class $modify(DBEditorUI, EditorUI) {
         return true;
     }
 
-    void onSwarmBot(CCObject* sender) {
+    void onSwarmBot(CCObject* /*sender*/) {
         log::info("swarmbot: editor solve requested");
         if (!Mod::get()->getSettingValue<bool>("enabled")) {
             FLAlertLayer::create(
@@ -389,8 +389,18 @@ class $modify(DBEditorUI, EditorUI) {
             return;
         }
 
+        auto testMenu = this->getChildByID("playtest-menu");
+        auto* testButton = testMenu ? testMenu->getChildByID("playtest-button") : nullptr;
+        if (!testButton) {
+            log::error("swarmbot: couldn't find the vanilla editor playtest button");
+            FLAlertLayer::create(
+                "Swarmbot", "Couldn't find Geometry Dash's playtest button.", "OK"
+            )->show();
+            return;
+        }
+
         dashback::requestEditorSolve();
-        this->onPlaytest(sender);
+        this->onPlaytest(testButton);
     }
 };
 
